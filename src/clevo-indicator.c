@@ -91,6 +91,7 @@ static void ui_toggle_menuitems(int fan_duty);
 static void ec_on_sigterm(int signum);
 static int ec_init(void);
 static int ec_auto_duty_adjust(void);
+static int ec_auto_duty_adjust_mod(void);
 static int ec_query_cpu_temp(void);
 static int ec_query_gpu_temp(void);
 static int ec_query_fan_duty(void);
@@ -191,7 +192,8 @@ int main(int argc, char* argv[]) {
         }
     } else {
         if (argv[1][0] == '-') {
-            printf(
+            if (argv[1][1] != 'h') {
+                printf(
                     "\n\
 Usage: clevo-indicator [fan-duty-percentage]\n\
 \n\
@@ -199,7 +201,7 @@ Dump/Control fan duty on Clevo laptops. Display indicator by default.\n\
 \n\
 Arguments:\n\
   [fan-duty-percentage]\t\tTarget fan duty in percentage, from 40 to 100\n\
-  -?\t\t\t\tDisplay this help and exit\n\
+  -h\t\t\t\tDisplay this help and exit\n\
 \n\
 Without arguments this program should attempt to display an indicator in\n\
 the Ubuntu tray area for fan information display and control. The indicator\n\
@@ -223,10 +225,11 @@ process.\n\
 \n\
 DO NOT MANIPULATE OR QUERY EC I/O PORTS WHILE THIS PROGRAM IS RUNNING.\n\
 \n");
+            }
             return main_dump_fan();
         } else {
             int val = atoi(argv[1]);
-            if (val < 40 || val > 100)
+            if (val < 10 || val > 100)
                     {
                 printf("invalid fan duty %d!\n", val);
                 return EXIT_FAILURE;
@@ -297,7 +300,7 @@ static int main_ec_worker(void) {
         close(io_fd);
         // auto EC
         if (share_info->auto_duty == 1) {
-            int next_duty = ec_auto_duty_adjust();
+            int next_duty = ec_auto_duty_adjust_mod();
             if (next_duty != 0 && next_duty != share_info->auto_duty_val) {
                 char s_time[256];
                 get_time_string(s_time, 256, "%m/%d %H:%M:%S");
@@ -449,35 +452,48 @@ static int ec_auto_duty_adjust(void) {
         return 100;
     if (temp >= 70 && duty < 90)
         return 90;
-    if (temp >= 60 && duty < 80)
+    if (temp >= 65 && duty < 80)
         return 80;
-    if (temp >= 50 && duty < 70)
+    if (temp >= 60 && duty < 70)
         return 70;
-    if (temp >= 40 && duty < 60)
-        return 60;
-    if (temp >= 30 && duty < 50)
-        return 50;
-    if (temp >= 20 && duty < 40)
-        return 40;
-    if (temp >= 10 && duty < 30)
+    if (temp >= 55 && duty < 35)
+        return 35;
+    if (temp >= 50 && duty < 30)
         return 30;
+    if (temp >= 45 && duty < 20)
+        return 20;
+    if (temp >= 40 && duty < 10)
+        return 10;
     //
-    if (temp <= 15 && duty > 30)
+    if (temp <= 38 && duty > 10)
+        return 10;
+    if (temp <= 43 && duty > 20)
+        return 20;
+    if (temp <= 48 && duty > 30)
         return 30;
-    if (temp <= 25 && duty > 40)
-        return 40;
-    if (temp <= 35 && duty > 50)
-        return 50;
-    if (temp <= 45 && duty > 60)
-        return 60;
-    if (temp <= 55 && duty > 70)
+    if (temp <= 53 && duty > 35)
+        return 35;
+    if (temp <= 63 && duty > 70)
         return 70;
-    if (temp <= 65 && duty > 80)
+    if (temp <= 68 && duty > 80)
         return 80;
-    if (temp <= 75 && duty > 90)
+    if (temp <= 78 && duty > 90)
         return 90;
     //
     return 0;
+}
+
+static int ec_auto_duty_adjust_mod(void) {
+    // int temp = MAX(share_info->cpu_temp, share_info->gpu_temp);
+    // int duty = share_info->fan_duty;
+    int rpm = share_info->fan_rpms;
+
+    if (rpm > 10000) {
+        // Fan has seized, restart the fan
+        return 100;
+    }
+
+    return ec_auto_duty_adjust();
 }
 
 static int ec_query_cpu_temp(void) {
@@ -500,7 +516,7 @@ static int ec_query_fan_rpms(void) {
 }
 
 static int ec_write_fan_duty(int duty_percentage) {
-    if (duty_percentage < 60 || duty_percentage > 100) {
+    if (duty_percentage < 10 || duty_percentage > 100) {
         printf("Wrong fan duty to write: %d\n", duty_percentage);
         return EXIT_FAILURE;
     }
